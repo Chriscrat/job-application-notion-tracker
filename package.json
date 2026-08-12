@@ -9,8 +9,10 @@
     "scripts": {
         "dev": "npm run dev --workspace=apps/job-tracker",
         "build": "npm run build --workspaces --if-present",
+        "build:chatbot": "npm run build --workspace=packages/chatbot",
         "build:app": "npm run build --workspace=apps/job-tracker",
-        "typecheck": "npm run typecheck --workspaces --if-present"
+        "typecheck": "npm run typecheck --workspaces --if-present",
+        "publish:chatbot": "npm publish --workspace=packages/chatbot --access=public"
     },
     "devDependencies": {
         "typescript": "^6.0.2"

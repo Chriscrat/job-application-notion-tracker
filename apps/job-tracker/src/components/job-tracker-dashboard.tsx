@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type SubmitEvent } from 'react';
+
+import { Chatbot } from '../../../../packages/chatbot/src/index';
 
 import { createJobEntry, deleteJobEntry, getJobs, updateJobEntry, updateJobEntryStatus } from '../lib/jobs.functions';
 import { getSession, login, logout } from '../lib/auth.functions';
@@ -135,7 +137,7 @@ export function JobTrackerDashboard() {
         setIsFormOpen(true);
     }
 
-    async function submitForm(event: FormEvent<HTMLFormElement>) {
+    async function submitForm(event: SubmitEvent<HTMLFormElement>) {
         event.preventDefault();
         const payload = {
             ...form,
@@ -311,7 +313,7 @@ export function JobTrackerDashboard() {
                                 jobs={filteredJobs.filter((job) => job.status === status)}
                                 isUpdating={statusMutation.isPending}
                                 onDelete={(job) => {
-                                    if (window.confirm(`Delete “${job.title}” from Notion?`)) {
+                                    if (window.confirm(`Delete "${job.title}" from Notion?`)) {
                                         deleteMutation.mutate({ data: { id: job.id } });
                                     }
                                 }}
@@ -452,6 +454,9 @@ export function JobTrackerDashboard() {
                     </form>
                 </div>
             )}
+            <div className='chatbot'>
+                <Chatbot/>
+            </div>
         </main>
     );
 }
@@ -471,7 +476,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => Promise<unkno
     const [password, setPassword] = useState('');
     const loginMutation = useMutation({ mutationFn: login });
 
-    async function submit(event: FormEvent<HTMLFormElement>) {
+    async function submit(event: SubmitEvent<HTMLFormElement>) {
         event.preventDefault();
         const result = await loginMutation.mutateAsync({ data: { username, password } });
         if (result.authenticated) await onAuthenticated();
