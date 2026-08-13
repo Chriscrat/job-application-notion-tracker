@@ -1,26 +1,102 @@
-import { ReactNode, useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback, type ReactNode } from 'react';
 import { avatar, avatarContainer } from './Chatbot.css';
 import { darkTheme, lightTheme } from './Theme.css';
 
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import type { DotLottie } from '@lottiefiles/dotlottie-web';
-import type { StateMachineAnimations } from '../types';
+import type { StateMachineAnimations, ChatbotProps, ChatbotAction, ActiveForm } from '../types';
 import { ChatbotBubble } from './ChatbotBubble';
+import { ChatbotForm } from './ChatbotForm';
+import { ChatbotLoader } from './ChatbotLoader';
 import { useMessageQueue } from '../hooks/useMessageQueue';
+import { saveMessage } from '../utils/storage';
 
 const LOTTI_URL = 'https://lottie.host/2f4ad578-fb21-479d-96e6-b2c32378b661/Qw7rkcRRBE.lottie';
 
-export function Chatbot(): ReactNode {
-    const [currentTheme, setCurrentTheme] = useState(lightTheme);
+export function Chatbot({ commands, onCommandExecute, theme, persistMessages = false, appId = 'default' }: ChatbotProps): ReactNode {
+    const [currentTheme] = useState(theme === 'dark' ? darkTheme : lightTheme);
+    const [activeForm, setActiveForm] = useState<ActiveForm | null>(null);
+    const [isExecuting, setIsExecuting] = useState(false);
+    const [loaderMessage, setLoaderMessage] = useState('Exécution en cours...');
+    const [firstLoad, setFirstLoad] = useState(true);
     const dotLottieRef = useRef<DotLottie | null>(null);
 
-    const { currentMessage, isExiting, showMessage, showMessages, clearQueue, skipCurrent, queueLength } = useMessageQueue({
+    const { currentMessage, isExiting, showMessage, showMessages, clearQueue, skipCurrent } = useMessageQueue({
         fadeOutDuration: 300,
-        delayBetweenMessages: 500,
+        delayBetweenMessages: 10,
         onAnimationTrigger: (animation) => {
             updateAvatarAnimation(animation);
         },
     });
+
+    // Persist response messages
+    useEffect(() => {
+        if (persistMessages && currentMessage) {
+            saveMessage(currentMessage, appId);
+        }
+    }, [currentMessage, persistMessages, appId]);
+
+    const runCommand = useCallback(
+        async (action: ChatbotAction, data: Record<string, any>) => {
+            updateAvatarAnimation('thinkClick');
+            dotLottieRef.current?.setLoop(true);
+            showMessage({
+                text: loaderMessage,
+                type: 'state',
+                duration: 500,
+            });
+            setIsExecuting(true);
+            onCommandExecute?.(action.id, data);
+
+            try {
+                await action.onExecute(data, { showMessage });
+            } catch {
+                showMessage({
+                    text: 'Une erreur est survenue',
+                    type: 'state',
+                    duration: 3000,
+                    animation: 'alertClick',
+                    actions: [
+                        {
+                            id: `retry-${action.id}`,
+                            label: '🔄 Réessayer',
+                            onExecute: () => runCommand(action, data),
+                        },
+                    ],
+                });
+            } finally {
+                dotLottieRef.current?.setLoop(false);
+                setIsExecuting(false);
+            }
+        },
+        [onCommandExecute, showMessage],
+    );
+
+    const handleActionClick = useCallback(
+        (action: ChatbotAction) => {
+            if (action.inputs && action.inputs.length > 0) {
+                setActiveForm({ actionId: action.id, action });
+            } else {
+                runCommand(action, {});
+            }
+        },
+        [runCommand],
+    );
+
+    const handleFormSubmit = useCallback(
+        (data: Record<string, any>) => {
+            if (!activeForm) return;
+            const { action } = activeForm;
+            setActiveForm(null);
+            skipCurrent();
+            runCommand(action, data);
+        },
+        [activeForm, skipCurrent, runCommand],
+    );
+
+    const handleFormCancel = useCallback(() => {
+        setActiveForm(null);
+    }, []);
 
     useEffect(() => {
         const dotLottie = dotLottieRef.current;
@@ -29,27 +105,29 @@ export function Chatbot(): ReactNode {
         const handleLoad = () => {
             dotLottie.stateMachineLoad('StateMachine1');
             dotLottie.stateMachineStart();
-            updateAvatarAnimation('jumpClick');
-
-            showMessages([
-                {
-                    text: 'Welcome you !',
-                    type: 'state',
-                    duration: 2000,
-                    animation: 'jumpClick',
-                },
-                {
-                    text: 'Loading resources...',
-                    type: 'state',
-                    duration: 1500,
-                    animation: 'thinkClick',
-                },
-                {
-                    text: 'Ready! Can I help you ?',
-                    type: 'response',
-                    animation: 'yesClick',
-                },
-            ]);
+            if (firstLoad) {
+                showMessages([
+                    {
+                        text: 'Hello !',
+                        type: 'state',
+                        duration: 1000,
+                        animation: 'jumpClick',
+                    },
+                    {
+                        text: 'Chargement en cours...',
+                        type: 'state',
+                        duration: 1500,
+                        animation: 'thinkClick',
+                    },
+                    {
+                        text: "Prêt! Comment puis-je t'aider ?",
+                        type: 'response',
+                        animation: 'yesClick',
+                        duration: 2000,
+                    },
+                ]);
+                setFirstLoad(false);
+            }
         };
 
         const handleError = (event: any) => {
@@ -63,27 +141,38 @@ export function Chatbot(): ReactNode {
             dotLottie.removeEventListener('load', handleLoad);
             dotLottie.removeEventListener('stateMachineError', handleError);
         };
-    }, [showMessage, showMessages]);
+    }, [commands, showMessage, showMessages, firstLoad]);
 
     const handleClick = () => {
-        if (currentMessage && !currentMessage.duration) {
-            updateAvatarAnimation('noClick');
-            skipCurrent();
+        if (firstLoad) {
             return;
-        } else {
-            updateAvatarAnimation('yesClick');
+        }
 
+        if (currentMessage && !currentMessage.duration) {
+            skipCurrent();
+            clearQueue();
+        } else {
             showMessage({
-                text: 'You clicked me!',
-                type: 'state',
-                duration: 1500,
+                text: 'Voici les commandes disponibles :',
+                type: 'response',
+                allowHtml: true,
+                animation: 'yesClick',
+                ...(commands ? { actions: commands } : {}),
             });
         }
     };
 
     const handleHover = () => {
+        if (firstLoad) {
+            return;
+        }
         updateAvatarAnimation('jumpClick');
         dotLottieRef.current?.setLoop(true);
+        showMessage({
+            text: 'Hey !',
+            type: 'state',
+            duration: 500,
+        });
     };
 
     const handleMouseLeave = () => {
@@ -108,10 +197,22 @@ export function Chatbot(): ReactNode {
                 width={100}
                 height={100}
             />
-            {currentMessage && (
+
+            {/* {isExecuting && <ChatbotLoader message={loaderMessage} />} */}
+
+            {!isExecuting && activeForm && (
+                <ChatbotForm
+                    action={activeForm.action}
+                    onSubmit={handleFormSubmit}
+                    onCancel={handleFormCancel}
+                />
+            )}
+
+            {!isExecuting && !activeForm && currentMessage && (
                 <ChatbotBubble
                     message={currentMessage}
                     isExiting={isExiting}
+                    onActionClick={handleActionClick}
                 />
             )}
         </div>

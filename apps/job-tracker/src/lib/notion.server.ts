@@ -1,5 +1,5 @@
 import { Client } from '@notionhq/client';
-import type { PageObjectResponse } from '@notionhq/client/build/src/api-endpoints';
+import type { PageObjectResponse, BlockObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 
 import { MOTIVES, STATUSES, type Job, type JobInput, type JobMotive, type JobStatus } from './job-types';
 
@@ -11,12 +11,36 @@ function getNotionClient() {
     return new Client({ auth });
 }
 
-function getDataSourceId() {
-    const dataSourceId = process.env.NOTION_DATA_SOURCE_ID;
+function getApplicationsDataSourceId() {
+    const dataSourceId = process.env.NOTION_APPLICATIONS_DATA_SOURCE_ID;
     if (!dataSourceId) {
-        throw new Error('NOTION_DATA_SOURCE_ID is missing. Add the copied Notion data source ID to .env.local.');
+        throw new Error('NOTION_APPLICATIONS_DATA_SOURCE_ID is missing. Add the copied Notion data source ID to .env.local.');
     }
     return dataSourceId;
+}
+
+function getProfilePageId() {
+    const id = process.env.NOTION_PROFILE_PAGE_ID;
+    if (!id) {
+        throw new Error('NOTION_PROFILE_PAGE_ID is missing. Add it to your .env.local file.');
+    }
+    return id;
+}
+
+function getSkillsDataSourceId() {
+    const id = process.env.NOTION_SKILLS_DATA_SOURCE_ID;
+    if (!id) {
+        throw new Error('NOTION_SKILLS_DATA_SOURCE_ID is missing. Add it to your .env.local file.');
+    }
+    return id;
+}
+
+function getExperiencePageId() {
+    const id = process.env.NOTION_EXPERIENCE_PAGE_ID;
+    if (!id) {
+        throw new Error('NOTION_EXPERIENCE_PAGE_ID is missing. Add it to your .env.local file.');
+    }
+    return id;
 }
 
 const text = (property: PageObjectResponse['properties'][string]) =>
@@ -24,6 +48,8 @@ const text = (property: PageObjectResponse['properties'][string]) =>
 
 const title = (property: PageObjectResponse['properties'][string]) =>
     property?.type === 'title' ? property.title.map((item) => item.plain_text).join('') : 'Untitled opportunity';
+
+const select = (property: PageObjectResponse['properties'][string]) => (property?.type === 'select' ? (property.select?.name ?? '') : '');
 
 const isStatus = (value: string | null): value is JobStatus => value !== null && (STATUSES as readonly string[]).includes(value);
 
@@ -115,7 +141,7 @@ export async function listJobs() {
 
     do {
         const response = await notion.dataSources.query({
-            data_source_id: getDataSourceId(),
+            data_source_id: getApplicationsDataSourceId(),
             page_size: 100,
             start_cursor: startCursor,
             sorts: [{ property: 'Date candidature', direction: 'descending' }],
@@ -128,7 +154,7 @@ export async function listJobs() {
 }
 
 async function notionStatusName(notion: Client, status: JobStatus) {
-    const dataSource = await notion.dataSources.retrieve({ data_source_id: getDataSourceId() });
+    const dataSource = await notion.dataSources.retrieve({ data_source_id: getApplicationsDataSourceId() });
     const statusProperty = dataSource.properties['Statut'];
     if (statusProperty?.type === 'select') {
         const matchingOption = statusProperty.select.options.find((option) => toJobStatus(option.name) === status);
@@ -141,7 +167,7 @@ export async function createJob(input: JobInput) {
     const notion = getNotionClient();
     const status = input.status ?? 'In wait';
     await notion.pages.create({
-        parent: { type: 'data_source_id', data_source_id: getDataSourceId() },
+        parent: { type: 'data_source_id', data_source_id: getApplicationsDataSourceId() },
         properties: jobProperties(input, await notionStatusName(notion, status)),
     });
 }
@@ -166,4 +192,100 @@ export async function updateJobStatus(id: string, status: JobStatus) {
 export async function archiveJob(id: string) {
     const notion = getNotionClient();
     await notion.pages.update({ page_id: id, in_trash: true });
+}
+
+type RichText = ReadonlyArray<{ plain_text: string }>;
+
+const richText = (items: RichText) => items.map((item) => item.plain_text).join('');
+
+function blockToLine(block: BlockObjectResponse): string {
+    switch (block.type) {
+        case 'paragraph':
+            return richText(block.paragraph.rich_text);
+        case 'heading_1':
+            return `# ${richText(block.heading_1.rich_text)}`;
+        case 'heading_2':
+            return `## ${richText(block.heading_2.rich_text)}`;
+        case 'heading_3':
+            return `### ${richText(block.heading_3.rich_text)}`;
+        case 'bulleted_list_item':
+            return `- ${richText(block.bulleted_list_item.rich_text)}`;
+        case 'numbered_list_item':
+            return `- ${richText(block.numbered_list_item.rich_text)}`;
+        case 'quote':
+            return `> ${richText(block.quote.rich_text)}`;
+        case 'callout':
+            return richText(block.callout.rich_text);
+        case 'to_do':
+            return `- [${block.to_do.checked ? 'x' : ' '}] ${richText(block.to_do.rich_text)}`;
+        default:
+            return '';
+    }
+}
+
+export async function getPageText(pageId: string): Promise<string> {
+    const notion = getNotionClient();
+    const lines: string[] = [];
+    let startCursor: string | undefined;
+
+    do {
+        const response = await notion.blocks.children.list({
+            block_id: pageId,
+            start_cursor: startCursor,
+            page_size: 100,
+        });
+        for (const block of response.results) {
+            if (!('type' in block)) continue;
+            lines.push(blockToLine(block));
+        }
+        startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+    } while (startCursor);
+
+    return lines.filter(Boolean).join('\n');
+}
+
+interface Skill {
+    stack: string;
+    type: string;
+    scope: string;
+    mastery: string;
+    comments: string;
+}
+
+async function getSkills(): Promise<Skill[]> {
+    const notion = getNotionClient();
+    const results: PageObjectResponse[] = [];
+    let startCursor: string | undefined;
+
+    do {
+        const response = await notion.dataSources.query({
+            data_source_id: getSkillsDataSourceId(),
+            page_size: 100,
+            start_cursor: startCursor,
+        });
+        results.push(...response.results.filter((result): result is PageObjectResponse => result.object === 'page'));
+        startCursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+    } while (startCursor);
+
+    return results.map((page) => ({
+        stack: title(page.properties['Stack']),
+        type: select(page.properties['Type']),
+        scope: select(page.properties['Scope']),
+        mastery: select(page.properties['Mastery']),
+        comments: text(page.properties['Comments']),
+    }));
+}
+
+export async function getCandidateProfileContext(): Promise<string> {
+    const [profileText, skills, experienceText] = await Promise.all([
+        getPageText(getProfilePageId()),
+        getSkills(),
+        getPageText(getExperiencePageId()),
+    ]);
+
+    const skillsText = skills
+        .map((skill) => `- ${skill.stack} (${skill.type}, ${skill.scope}, ${skill.mastery}): ${skill.comments}`)
+        .join('\n');
+
+    return ['## Profil', profileText, '## Compétences', skillsText, '## Expérience', experienceText].join('\n\n');
 }

@@ -30,10 +30,16 @@ Credentials are kept in `.env.local` on your computer. Never commit this file.
 
 ```bash
 npx wrangler secret put NOTION_TOKEN
-npx wrangler secret put NOTION_DATA_SOURCE_ID
+npx wrangler secret put NOTION_APPLICATIONS_DATA_SOURCE_ID
+npx wrangler secret put NOTION_PROFILE_PAGE_ID
+npx wrangler secret put NOTION_SKILLS_DATA_SOURCE_ID
+npx wrangler secret put NOTION_EXPERIENCE_PAGE_ID
 npx wrangler secret put APP_USERNAME
 npx wrangler secret put APP_PASSWORD
 npx wrangler secret put APP_SESSION_SECRET
+npx wrangler secret put ANTHROPIC_API_KEY
+npx wrangler secret put ANTHROPIC_MODEL
+
 ```
 
 3. Deploy with `npm run deploy`.

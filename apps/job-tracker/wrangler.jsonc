@@ -5,6 +5,17 @@
     "compatibility_flags": ["nodejs_compat"],
     "main": "@tanstack/react-start/server-entry",
     "secrets": {
-        "required": ["NOTION_TOKEN", "NOTION_DATA_SOURCE_ID", "APP_USERNAME", "APP_PASSWORD", "APP_SESSION_SECRET"],
-    }
+        "required": [
+            "NOTION_TOKEN",
+            "NOTION_APPLICATIONS_DATA_SOURCE_ID",
+            "NOTION_PROFILE_PAGE_ID",
+            "NOTION_SKILLS_DATA_SOURCE_ID",
+            "NOTION_EXPERIENCE_PAGE_ID",
+            "APP_USERNAME",
+            "APP_PASSWORD",
+            "APP_SESSION_SECRET",
+            "ANTHROPIC_API_KEY",
+            "ANTHROPIC_MODEL"
+        ],
+    },
 }

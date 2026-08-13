@@ -4,6 +4,7 @@ import { useMemo, useState, type SubmitEvent } from 'react';
 
 import { Chatbot } from '../../../../packages/chatbot/src/index';
 
+import { createJobTrackerCommands } from '../lib/chatbot-commands';
 import { createJobEntry, deleteJobEntry, getJobs, updateJobEntry, updateJobEntryStatus } from '../lib/jobs.functions';
 import { getSession, login, logout } from '../lib/auth.functions';
 import { MOTIVES, STATUSES, type Job, type JobInput, type JobMotive, type JobStatus } from '../lib/job-types';
@@ -455,7 +456,11 @@ export function JobTrackerDashboard() {
                 </div>
             )}
             <div className='chatbot'>
-                <Chatbot/>
+                <Chatbot
+                    commands={createJobTrackerCommands()}
+                    persistMessages
+                    appId="job-tracker"
+                />
             </div>
         </main>
     );
