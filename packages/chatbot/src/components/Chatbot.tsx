@@ -2,30 +2,34 @@ import { useRef, useEffect, useState, useCallback, type ReactNode } from 'react'
 import { avatar, avatarContainer } from './Chatbot.css';
 import { darkTheme, lightTheme } from './Theme.css';
 
-import { DotLottieReact } from '@lottiefiles/dotlottie-react';
-import type { DotLottie } from '@lottiefiles/dotlottie-web';
-import type { StateMachineAnimations, ChatbotProps, ChatbotAction, ActiveForm } from '../types';
+import type { ChatbotProps, ChatbotAction, ActiveForm } from '../types';
 import { ChatbotBubble } from './ChatbotBubble';
 import { ChatbotForm } from './ChatbotForm';
 import { ChatbotLoader } from './ChatbotLoader';
 import { useMessageQueue } from '../hooks/useMessageQueue';
 import { saveMessage } from '../utils/storage';
-
-const LOTTI_URL = 'https://lottie.host/2f4ad578-fb21-479d-96e6-b2c32378b661/Qw7rkcRRBE.lottie';
+import { Cloudee, AnimationName } from './cloudee/Cloudee';
+import { RuntimeAvatar } from './cloudee/avatar-runtime';
 
 export function Chatbot({ commands, onCommandExecute, theme, persistMessages = false, appId = 'default' }: ChatbotProps): ReactNode {
     const [currentTheme] = useState(theme === 'dark' ? darkTheme : lightTheme);
     const [activeForm, setActiveForm] = useState<ActiveForm | null>(null);
     const [isExecuting, setIsExecuting] = useState(false);
     const [loaderMessage, setLoaderMessage] = useState('Exécution en cours...');
-    const [firstLoad, setFirstLoad] = useState(true);
-    const dotLottieRef = useRef<DotLottie | null>(null);
+    const [isFirstLoad, setIsFirstLoad] = useState(true);
+    const cloudeeRef = useRef<RuntimeAvatar>(null);
+    const defaultAnimation: AnimationName = 'happy';
+    const hoverAnimation: AnimationName = 'confused';
+    const [animationState, setAnimationState] = useState<AnimationName>(defaultAnimation);
+    const hasQueuedIntro = useRef(false);
 
-    const { currentMessage, isExiting, showMessage, showMessages, clearQueue, skipCurrent } = useMessageQueue({
+    const [isBubbleOpened, setIsBubbleOpened] = useState(false);
+
+    const { currentMessage, isExiting, showMessage, showMessages, clearQueue, skipCurrent, queueLength } = useMessageQueue({
         fadeOutDuration: 300,
         delayBetweenMessages: 10,
-        onAnimationTrigger: (animation) => {
-            updateAvatarAnimation(animation);
+        onAnimationTrigger: (animation: AnimationName) => {
+            setAnimationState(animation);
         },
     });
 
@@ -38,8 +42,6 @@ export function Chatbot({ commands, onCommandExecute, theme, persistMessages = f
 
     const runCommand = useCallback(
         async (action: ChatbotAction, data: Record<string, any>) => {
-            updateAvatarAnimation('thinkClick');
-            dotLottieRef.current?.setLoop(true);
             showMessage({
                 text: loaderMessage,
                 type: 'state',
@@ -55,7 +57,7 @@ export function Chatbot({ commands, onCommandExecute, theme, persistMessages = f
                     text: 'Une erreur est survenue',
                     type: 'state',
                     duration: 3000,
-                    animation: 'alertClick',
+                    animation: 'scared',
                     actions: [
                         {
                             id: `retry-${action.id}`,
@@ -65,7 +67,6 @@ export function Chatbot({ commands, onCommandExecute, theme, persistMessages = f
                     ],
                 });
             } finally {
-                dotLottieRef.current?.setLoop(false);
                 setIsExecuting(false);
             }
         },
@@ -85,7 +86,10 @@ export function Chatbot({ commands, onCommandExecute, theme, persistMessages = f
 
     const handleFormSubmit = useCallback(
         (data: Record<string, any>) => {
-            if (!activeForm) return;
+            if (!activeForm) {
+                return;
+            }
+            setAnimationState('thinking');
             const { action } = activeForm;
             setActiveForm(null);
             skipCurrent();
@@ -99,104 +103,96 @@ export function Chatbot({ commands, onCommandExecute, theme, persistMessages = f
     }, []);
 
     useEffect(() => {
-        const dotLottie = dotLottieRef.current;
-        if (!dotLottie) return;
+        if (hasQueuedIntro.current) return;
+        hasQueuedIntro.current = true;
 
-        const handleLoad = () => {
-            dotLottie.stateMachineLoad('StateMachine1');
-            dotLottie.stateMachineStart();
-            if (firstLoad) {
-                showMessages([
-                    {
-                        text: 'Hello !',
-                        type: 'state',
-                        duration: 1000,
-                        animation: 'jumpClick',
-                    },
-                    {
-                        text: 'Chargement en cours...',
-                        type: 'state',
-                        duration: 1500,
-                        animation: 'thinkClick',
-                    },
-                    {
-                        text: "Prêt! Comment puis-je t'aider ?",
-                        type: 'response',
-                        animation: 'yesClick',
-                        duration: 2000,
-                    },
-                ]);
-                setFirstLoad(false);
-            }
-        };
+        showMessages([
+            {
+                text: 'Hello !',
+                type: 'state',
+                duration: 1000,
+                animation: 'idle',
+            },
+            {
+                text: 'Chargement en cours...',
+                type: 'state',
+                duration: 3000,
+                animation: 'thinking',
+            },
+            {
+                text: "Prêt! Comment puis-je t'aider ?",
+                type: 'response',
+                animation: defaultAnimation,
+                duration: 2000,
+            },
+        ]);
+    }, [showMessages]);
 
-        const handleError = (event: any) => {
-            console.error('Erreur:', event.error);
-        };
-
-        dotLottie.addEventListener('load', handleLoad);
-        dotLottie.addEventListener('stateMachineError', handleError);
-
-        return () => {
-            dotLottie.removeEventListener('load', handleLoad);
-            dotLottie.removeEventListener('stateMachineError', handleError);
-        };
-    }, [commands, showMessage, showMessages, firstLoad]);
+    const introHasPlayed = useRef(false);
+    useEffect(() => {
+        if (!isFirstLoad) return;
+        if (currentMessage !== null || queueLength > 0) {
+            introHasPlayed.current = true;
+        } else if (introHasPlayed.current) {
+            setIsFirstLoad(false);
+        }
+    }, [isFirstLoad, currentMessage, queueLength]);
 
     const handleClick = () => {
-        if (firstLoad) {
+        if (isFirstLoad) {
             return;
         }
 
         if (currentMessage && !currentMessage.duration) {
             skipCurrent();
             clearQueue();
+            setIsBubbleOpened(false);
+            setAnimationState(defaultAnimation);
         } else {
+            setIsBubbleOpened(true);
             showMessage({
                 text: 'Voici les commandes disponibles :',
                 type: 'response',
                 allowHtml: true,
-                animation: 'yesClick',
+                animation: 'curious',
                 ...(commands ? { actions: commands } : {}),
             });
         }
     };
 
     const handleHover = () => {
-        if (firstLoad) {
+        if (isFirstLoad || isBubbleOpened) {
             return;
         }
-        updateAvatarAnimation('jumpClick');
-        dotLottieRef.current?.setLoop(true);
         showMessage({
             text: 'Hey !',
             type: 'state',
+            animation: hoverAnimation,
             duration: 500,
         });
     };
 
     const handleMouseLeave = () => {
-        dotLottieRef.current?.setLoop(false);
+        if (!isFirstLoad && !isBubbleOpened) {
+            setAnimationState(defaultAnimation);
+        }
     };
-
-    function updateAvatarAnimation(animationId: StateMachineAnimations) {
-        dotLottieRef.current?.stateMachineFireEvent(animationId);
-    }
 
     return (
         <div className={[avatarContainer, currentTheme].join(' ')}>
-            <DotLottieReact
-                src={LOTTI_URL}
-                dotLottieRefCallback={(dotLottie) => {
-                    dotLottieRef.current = dotLottie;
-                }}
+            <div
+                className={avatar}
                 onClick={handleClick}
                 onMouseEnter={handleHover}
                 onMouseLeave={handleMouseLeave}
-                className={avatar}
-                width={100}
-                height={100}
-            />
+            >
+                <Cloudee
+                    animation={animationState}
+                    size={100}
+                    loop={true}
+                    ref={cloudeeRef}
+                />
+            </div>
 
             {/* {isExecuting && <ChatbotLoader message={loaderMessage} />} */}
 

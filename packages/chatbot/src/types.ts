@@ -1,3 +1,5 @@
+import { AnimationName } from "./components/cloudee/cloudee.avatar";
+
 export type StateMachineAnimations =
     | 'yesClick'
     | 'noClick'
@@ -43,7 +45,7 @@ export interface ChatbotMessage {
     text: string;
     type: ChatbotMessageType;
     duration?: number;
-    animation?: StateMachineAnimations;
+    animation?: AnimationName;
     actions?: ChatbotAction[];
     allowHtml?: boolean;              // Activate dangerouslySetInnerHTML
 }

@@ -20,12 +20,13 @@ export function createJobTrackerCommands(): ChatbotAction[] {
             ],
             onExecute: async ({ content }, { showMessage }) => {
                 try {
-                    const { analysis } = await analyzeJobOffer({ data: { content } });
+                    // const { analysis } = await analyzeJobOffer({ data: { content } });
+                    const result  = await analyzeJobOffer({ data: { content } });
                     showMessage({
-                        text: `<h2>Résultat de l'analyse</h2><br/><br/>${analysis}`,
+                        text: `<h2>Résultat de l'analyse</h2><br/><br/>${result}`,
                         type: 'response',
                         allowHtml: true,
-                        animation: 'yesClick',
+                        animation: 'working',
                     });
                 } catch (error) {
                     console.error(error);
@@ -33,7 +34,7 @@ export function createJobTrackerCommands(): ChatbotAction[] {
                         text: "L'analyse a échoué. Vérifie que la clé API Claude est configurée, puis réessaie.",
                         type: 'state',
                         duration: 4000,
-                        animation: 'alertClick',
+                        animation: 'angry',
                     });
                 }
             },

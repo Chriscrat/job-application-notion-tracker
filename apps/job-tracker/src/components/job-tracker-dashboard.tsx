@@ -67,6 +67,7 @@ export function JobTrackerDashboard() {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingJob, setEditingJob] = useState<Job | null>(null);
     const [form, setForm] = useState<JobInput>(emptyJob);
+    const chatbotCommands = useMemo(() => createJobTrackerCommands(), []);
 
     const sessionQuery = useQuery({ queryKey: ['session'], queryFn: () => getSession() });
     const jobsQuery = useQuery({
@@ -457,7 +458,7 @@ export function JobTrackerDashboard() {
             )}
             <div className='chatbot'>
                 <Chatbot
-                    commands={createJobTrackerCommands()}
+                    commands={chatbotCommands}
                     persistMessages
                     appId="job-tracker"
                 />

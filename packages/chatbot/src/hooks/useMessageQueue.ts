@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ChatbotMessage, StateMachineAnimations } from '../types';
+import { AnimationName } from '../components/cloudee/cloudee.avatar';
 
 interface UseMessageQueueOptions {
     fadeOutDuration?: number;
     delayBetweenMessages?: number;
-    onAnimationTrigger?: (animation: StateMachineAnimations) => void;
+    onAnimationTrigger?: (animation: AnimationName) => void;
 }
 
 interface UseMessageQueueReturn {
